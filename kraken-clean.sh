@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Exit on error, undefined variables and pipe failures
-set -evo pipefail
+set -eo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -25,6 +25,9 @@ readonly EXIT_SUCCESS=0
 readonly EXIT_ERROR=1
 readonly EXIT_INVALID_ARGS=2
 readonly EXIT_DOCKER_ERROR=3
+
+# Default Configuration
+DEFAULT_TAG_PREFIX="test-"
 
 # Global Variables
 declare -g DRY_RUN=false 
@@ -64,17 +67,85 @@ check_docker() {
     fi
 }
 
+clean_images() {
+    print_color "$BLUE" "Cleaning Images with prefix: $DEFAULT_TAG_PREFIX"
+
+    # Get images with matching prefix
+    local images=$(docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}})" | grep "^$TAG_PREFIX" | awk '{print $2}' || true)
+
+    if [[ -z $images ]]; then 
+        print_color "$YELLOW" "No images found with the prefix: $DEFAULT_TAG_PREFIX"
+        return 0 
+    fi
+
+    local count=0
+    for image_id in $images; do 
+        local image_name=$(docker inspect --format='{{index .RepoTags 0}}' "$image_id" 2>/dev/null || echo "unnamed")
+
+        if [[ "$DRY_RUN" == true ]]; then 
+            print_color "$YELLOW" "[DRY RUN] Would remove images: $image_name {image_id}"
+        else 
+            print_color "$GREEN" "Removing Images: $image_name"
+            docker rmi "$image_id" >/dev/null 2>&1 || {
+                log_messages "ERROR" "Failed to remove image $image_name" 
+                continue
+            }
+        fi 
+        ((count++))
+    done 
+
+    log_messages "SUCCESS" "Processed $count images"
+    print_color "$GREEN" "Processed $count images" 
+}
+
 # Main function skeleton
 main() {
-    touch $LOG_FILE
+    local command=""
 
-    # Check if the docker is running or not
-    check_docker
-
-    log_messages "INFO" "Kraken-Clean script Started" 
     log_messages "ERROR" "Kraken-Clean script Failed"
     log_messages "WARN" "Kraken-Clean script Warning"
     log_messages "SUCCESS" "Kraken-clean script Success" 
+
+    while [[ $# -gt 0 ]]; do 
+        case $1 in 
+            (-d | --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            (images)
+                command="images"
+                shift
+                ;;
+            (*)
+                echo "Unknown Command"
+                exit 1
+                ;;
+        esac 
+    done 
+
+    # Check if the docker file is running or not
+    check_docker 
+
+    if [[ -z "$command" ]]; then
+        command="images"
+    fi
+
+    touch $LOG_FILE  # Create the log file
+
+    log_messages "INFO" "Kraken-Clean script Started" 
+
+    # Execute Command 
+    case "$command" in 
+        (images)
+            clean_images
+            ;;
+        (*)
+            echo "Unknown Command: $command" 
+            exit 1 
+            ;;
+    esac 
+
+    log_messages "SUCCESS" "Kraken-clean script completed"
 }
 
 main 
