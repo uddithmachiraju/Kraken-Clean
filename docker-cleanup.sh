@@ -56,10 +56,25 @@ log_messages() {
     fi 
 }
 
+check_docker() {
+    if ! docker info >/dev/null 2>&1; then 
+        log_messages "ERROR" "Docker is not running or not accessable"
+        print_color "$RED" "ERROR: Docker is not running or accessable" 
+        exit 1
+    fi
+}
+
 # Main function skeleton
 main() {
     touch $LOG_FILE
+
+    # Check if the docker is running or not
+    check_docker
+
     log_messages "INFO" "Kraken-Clean script Started" 
+    log_messages "ERROR" "Kraken-Clean script Failed"
+    log_messages "WARN" "Kraken-Clean script Warning"
+    log_messages "SUCCESS" "Kraken-clean script Success" 
 }
 
 main 
