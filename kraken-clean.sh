@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Exit on error, undefined variables and pipe failures
-set -eo pipefail
+set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -59,6 +59,22 @@ log_messages() {
     fi 
 }
 
+usage() {
+    cat <<EOF 
+Usage: $0 [options] <command>
+
+Commands:
+    images           Clean images matching with the configured tag prefix
+Options:
+    -d | --dry-run    Show what would be removed (no destruction)
+    -p | --prefix     Set the prefix
+    -v | --verbose    Verbose logging to console
+    -f | --force      Force remove images 
+    -h | --help       Help
+EOF
+    exit 0 
+}
+
 check_docker() {
     if ! docker info >/dev/null 2>&1; then 
         log_messages "ERROR" "Docker is not running or not accessable"
@@ -71,8 +87,9 @@ clean_images() {
     print_color "$BLUE" "Cleaning Images with prefix: $DEFAULT_TAG_PREFIX"
 
     # Get images with matching prefix
-    local images=$(docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}})" | grep "^$TAG_PREFIX" | awk '{print $2}' || true)
+    local images="$(docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}})" | grep "^$DEFAULT_TAG_PREFIX" | awk '{print $2}' || true)"
 
+    # No images found with the given prefix
     if [[ -z $images ]]; then 
         print_color "$YELLOW" "No images found with the prefix: $DEFAULT_TAG_PREFIX"
         return 0 
@@ -83,7 +100,7 @@ clean_images() {
         local image_name=$(docker inspect --format='{{index .RepoTags 0}}' "$image_id" 2>/dev/null || echo "unnamed")
 
         if [[ "$DRY_RUN" == true ]]; then 
-            print_color "$YELLOW" "[DRY RUN] Would remove images: $image_name {image_id}"
+            print_color "$YELLOW" "[DRY RUN] Would remove images: $image_name {$image_id}"
         else 
             print_color "$GREEN" "Removing Images: $image_name"
             docker rmi "$image_id" >/dev/null 2>&1 || {
@@ -100,11 +117,12 @@ clean_images() {
 
 # Main function skeleton
 main() {
-    local command=""
 
-    log_messages "ERROR" "Kraken-Clean script Failed"
-    log_messages "WARN" "Kraken-Clean script Warning"
-    log_messages "SUCCESS" "Kraken-clean script Success" 
+    if [[ $# -eq 0 ]]; then
+        usage 
+    fi
+
+    local command=""
 
     while [[ $# -gt 0 ]]; do 
         case $1 in 
@@ -148,4 +166,4 @@ main() {
     log_messages "SUCCESS" "Kraken-clean script completed"
 }
 
-main 
+main "$@" 
