@@ -3,6 +3,7 @@
 # Exit on error, undefined variables and pipe failures
 set -euo pipefail
 
+# Color Codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -31,7 +32,7 @@ DEFAULT_TAG_PREFIX="test-"
 
 # Global Variables
 declare -g DRY_RUN=false 
-declare -g VERBOSE=false 
+declare -g VERBOSE=true 
 declare -g FORCE=false
 
 # Functions to print colored outputs
@@ -75,6 +76,7 @@ EOF
     exit 0 
 }
 
+# Function to check if docker is running
 check_docker() {
     if ! docker info >/dev/null 2>&1; then 
         log_messages "ERROR" "Docker is not running or not accessable"
@@ -83,30 +85,50 @@ check_docker() {
     fi
 }
 
+# Function to clean images 
 clean_images() {
     print_color "$BLUE" "Cleaning Images with prefix: $DEFAULT_TAG_PREFIX"
 
-    # Get images with matching prefix
-    local images="$(docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}})" | grep "^$DEFAULT_TAG_PREFIX" | awk '{print $2}' || true)"
+    # Get image references (repo:tag) with matching prefix; headerless format avoids filtering the header
+    local -a image_refs=()
+    mapfile -t image_refs < <(docker images --format "{{.Repository}}:{{.Tag}}" | grep "^$DEFAULT_TAG_PREFIX" || true)
+
+    if [[ "$VERBOSE" == true ]]; then
+        print_color "$BLUE" "Candidates to process:"
+        for cand in "${image_refs[@]}"; do
+            [[ -n "$cand" ]] && print_color "$BLUE" " - $cand"
+        done
+    fi
 
     # No images found with the given prefix
-    if [[ -z $images ]]; then 
+    if (( ${#image_refs[@]} == 0 )); then 
         print_color "$YELLOW" "No images found with the prefix: $DEFAULT_TAG_PREFIX"
         return 0 
     fi
 
     local count=0
-    for image_id in $images; do 
-        local image_name=$(docker inspect --format='{{index .RepoTags 0}}' "$image_id" 2>/dev/null || echo "unnamed")
+    for image_ref in "${image_refs[@]}"; do 
+        local image_name="$image_ref"
 
         if [[ "$DRY_RUN" == true ]]; then 
-            print_color "$YELLOW" "[DRY RUN] Would remove images: $image_name {$image_id}"
+            print_color "$YELLOW" "[DRY RUN] Would remove images: $image_name"
         else 
             print_color "$GREEN" "Removing Images: $image_name"
-            docker rmi "$image_id" >/dev/null 2>&1 || {
+            if [[ "$FORCE" == true ]]; then
+                set +e
+                docker rmi -f "$image_ref" >/dev/null 2>&1 || {
+                    log_messages "ERROR" "Failed to remove image $image_name"
+                    continue
+                set -e
+                }
+            else
+                set +e
+                docker rmi "$image_ref" >/dev/null 2>&1 || {
+                set -e
                 log_messages "ERROR" "Failed to remove image $image_name" 
                 continue
-            }
+                }
+            fi
         fi 
         ((count++))
     done 
@@ -129,6 +151,13 @@ main() {
             (-d | --dry-run)
                 DRY_RUN=true
                 shift
+                ;;
+            (-p | --prefix)
+                if [[ $# -lt 2 ]]; then
+                    echo "Error: --prefix requires a value"; exit $EXIT_INVALID_ARGS
+                fi
+                DEFAULT_TAG_PREFIX="$2"
+                shift 2
                 ;;
             (images)
                 command="images"
