@@ -85,6 +85,40 @@ check_docker() {
     fi
 }
 
+clean_containers() {
+    print_color "$BLUE" "Cleaning Containers with prefix: '$DEFAULT_TAG_PREFIX'" 
+
+    # Get container references (container id) with matching prefix; headerless format avoids filtering the header
+    local -a container_refs=()
+    mapfile -t container_refs < <(docker ps --format "{{.ID}}" | grep "^$DEFAULT_TAG_PREFIX" || true) 
+
+    if [[ "$DRY_RUN" == true ]]; then 
+        print_color "$YELLOW" "[DRY RUN] would remove containers: ${container_refs[@]}" 
+    else 
+        print_color "$GREEN" "Removing conatiners: ${container_refs[@]}"
+        for container_ref in $container_refs; do 
+            if [[ "FORCE" == true]]; then
+                set +e 
+                docker rm -f "$container_ref" >/dev/null 2>&1 || {
+                    log_messages "ERROR" "Failed to remove container: $container_ref"
+                    continue
+                }
+                set -e 
+            else 
+                set +e 
+                docker rm "$container_ref" >/dev/null 2 >&1 || {
+                    log_messages "ERROR" "Failed to remove container: $container_ref"
+                    continue
+                }
+                set -e 
+            fi
+            ((count++))
+        done 
+        log_messages "SUCCESS" "Processed $count containers"
+        print_color "$GREEN" "Processed $count containers" 
+    fi 
+}
+
 # Function to clean images 
 clean_images() {
     print_color "$BLUE" "Cleaning Images with prefix: $DEFAULT_TAG_PREFIX"
