@@ -90,33 +90,73 @@ clean_containers() {
 
     # Get container references (container id) with matching prefix; headerless format avoids filtering the header
     local -a container_refs=()
-    mapfile -t container_refs < <(docker ps --format "{{.ID}}" | grep "^$DEFAULT_TAG_PREFIX" || true) 
+    mapfile -t container_refs < <(docker ps -a --format "{{.ID}} {{.Names}}" | awk -v prefix="$DEFAULT_TAG_PREFIX" '$2 ~ prefix {print $1}' || true)
 
-    if [[ "$DRY_RUN" == true ]]; then 
-        print_color "$YELLOW" "[DRY RUN] would remove containers: ${container_refs[@]}" 
-    else 
-        print_color "$GREEN" "Removing conatiners: ${container_refs[@]}"
-        for container_ref in $container_refs; do 
-            if [[ "FORCE" == true ]]; then
-                set +e 
-                docker rm -f "$container_ref" >/dev/null 2>&1 || {
-                    log_messages "ERROR" "Failed to remove container: $container_ref"
-                    continue
-                }
-                set -e 
-            else 
-                set +e 
-                docker rm "$container_ref" >/dev/null 2 >&1 || {
-                    log_messages "ERROR" "Failed to remove container: $container_ref"
-                    continue
-                }
-                set -e 
-            fi
-            ((count++))
+    # print detailed information about the containers
+    if [[ "$VERBOSE" == true ]]; then
+        print_color "$BLUE" "Container candidates to process:" 
+        for container_id in "${container_refs[@]}"; do 
+            if [[ -n "$container_id" ]]; then
+                local container_name
+                set +e
+                container_name=$(docker inspect --format '{{.Name}}' "$container_id" 2>/dev/null | sed 's|^/||' || echo "unknown")
+                print_color "$BLUE" " - $container_id ($container_name)" 
+            fi 
+            set -e 
         done 
-        log_messages "SUCCESS" "Processed $count containers"
-        print_color "$GREEN" "Processed $count containers" 
     fi 
+
+    # No containers found 
+    if (( ${#container_refs[@]} == 0 )) || [[ -z "${container_refs[0]:-}" ]]; then 
+        print_color "$YELLOW" "No containers found with the prefix: $DEFAULT_TAG_PREFIX"
+        return 0 
+    fi 
+
+    local count=0  # Keeps track of the containers
+
+    # Just show don't delete 
+    if [[ "$DRY_RUN" == true ]]; then 
+        for container_id in "${container_refs[@]}"; do 
+            if [[ -n "$container_id" ]]; then 
+                local container_name
+                set +e
+                container_name=$(docker inspect --format '{{.Name}}' "$container_id" 2>/dev/null | sed 's|^/||' || echo "unknown")
+                print_color "$YELLOW" "[DRY RUN] Would remove container: $container_id ($container_name)"
+                ((count++))
+            fi 
+            set -e
+        done 
+    else 
+        # just deletes never shows which one is getting deleted
+        for container_id in "${container_refs[@]}"; do 
+            if [[ -n "$container_id" ]]; then
+                local container_name 
+                set +e
+                container_name=$(docker inspect --format '{{.Name}}' "$container_id" 2>/dev/null | sed 's|^/||' || echo "unknown")
+                print_color "$GREEN" "Removing container: $container_id ($container_name)"
+
+                # No mercy on containers 
+                if [[ "$FORCE" == true ]]; then 
+                    docker rm -f "$container_id" >/dev/null 2>&1 || {
+                        log_messages "ERROR" "Failed to remove container: $container_id ($container_name)"
+                        continue
+                    }
+                # Have some mercy on containers
+                else
+                    docker rm "$container_id" >/dev/null 2>&1 || {
+                        log_messages "ERROR" "Failed to remove container: $container_id ($container_name)" 
+                        continue 
+                    }
+                fi 
+                ((count++))
+            fi 
+            set -e
+        done 
+    fi 
+
+    log_messages "SUCCESS" "Processed $count containers"
+    print_color "$GREEN" "Processed $count conatainers" 
+
 }
 
 # Function to clean images 
@@ -197,6 +237,10 @@ main() {
                 command="images"
                 shift
                 ;;
+            (containers)
+                command="containers"
+                shift 
+                ;;
             (*)
                 echo "Unknown Command"
                 exit 1
@@ -219,6 +263,9 @@ main() {
     case "$command" in 
         (images)
             clean_images
+            ;;
+        (containers)
+            clean_containers
             ;;
         (*)
             echo "Unknown Command: $command" 
