@@ -80,7 +80,7 @@ EOF
 check_docker() {
     if ! docker info >/dev/null 2>&1; then 
         log_messages "ERROR" "Docker is not running or not accessable"
-        print_color "$RED" "ERROR: Docker is not running or accessable" 
+        print_color "$RED" "ERROR: Docker is not running or not accessable" 
         exit 1
     fi
 }
@@ -97,7 +97,7 @@ clean_containers() {
     else 
         print_color "$GREEN" "Removing conatiners: ${container_refs[@]}"
         for container_ref in $container_refs; do 
-            if [[ "FORCE" == true]]; then
+            if [[ "FORCE" == true ]]; then
                 set +e 
                 docker rm -f "$container_ref" >/dev/null 2>&1 || {
                     log_messages "ERROR" "Failed to remove container: $container_ref"
@@ -229,4 +229,6 @@ main() {
     log_messages "SUCCESS" "Kraken-clean script completed"
 }
 
-main "$@" 
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi  
