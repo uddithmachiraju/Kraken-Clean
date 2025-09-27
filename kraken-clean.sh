@@ -90,7 +90,7 @@ clean_volumes() {
 
     # Get volume references
     local -a volume_refs=()
-    mapfile -t volume_refs < <(docker volume ls --quite | grep "^$DEFAULT_TAG_PREFIX" || true) 
+    mapfile -t volume_refs < <(docker volume ls --quiet | grep "^$DEFAULT_TAG_PREFIX" || true) 
 
     # Print detailed information about the volumes
     if [[ "$VERBOSE" == true ]]; then 
