@@ -85,6 +85,76 @@ check_docker() {
     fi
 }
 
+clean_volumes() {
+    print_color "$BLUE" "Cleaning volumes with prefix: $DEFAULT_TAG_PREFIX" 
+
+    # Get volume references
+    local -a volume_refs=()
+    mapfile -t volume_refs < <(docker volume ls --quite | grep "^$DEFAULT_TAG_PREFIX" || true) 
+
+    # Print detailed information about the volumes
+    if [[ "$VERBOSE" == true ]]; then 
+        print_color "$BLUE" "Volume candidates to process:"
+        for volume_ref in "${volume_refs[@]}"; do 
+            if [[ -n "$volume_ref" ]]; then 
+                local volume_name
+                set +e 
+                volume_name=$(docker volume inspect "$volume_ref" --format '{{.Driver}} - {{.Mountpoint}}' 2>/dev/null || echo "unknown")  
+                print_color "$BLUE" "- $volume_ref ($volume_name)"
+                set -e 
+            fi 
+        done 
+    fi 
+
+    # No volumes found 
+    if (( ${#volume_refs[@]} == 0 )); then 
+        print_color "$YELLOW" "No volumes found with the prefix: $DEFAULT_TAG_PREFIX" 
+        return 0 
+    fi 
+
+    local count=0 # Keeps track of the volumes
+
+    # Just show don't delete
+    if [[ "$DRY_RUN" == true ]]; then
+        for volume_ref in "${volume_refs[@]}"; do 
+            if [[ -n "$volume_ref" ]]; then 
+                print_color "$YELLOW" "[DRY RUN] would remove volume: $volume_ref"
+                ((count++))
+            fi 
+        done 
+    else
+        # Actually delete volumes
+        for volume_ref in "${volume_refs[@]}"; do
+            if [[ -n "$volume_ref" ]]; then 
+                print_color "$GREEN" "Removing volume: $volume_ref" 
+
+                # Don't show mercy 
+                if [[ "$FORCE" == true ]]; then 
+                    set +e 
+                    docker volume rm -f "$volume_ref" >/dev/null 2>&1 || {
+                        log_messages "ERROR" "Failed to remove volume: $volume_ref"
+                        continue 
+                    }
+                    set -e 
+                # Show some mercy 
+                else 
+                    set +e 
+                    docker volume rm "$volume_ref" >/dev/null 2>&1 || {
+                        log_messages "ERROR" "Failed to remove volume: $volume_ref" 
+                        continue
+                    }
+                    set -e 
+                fi 
+                ((count++)) 
+            fi 
+        done 
+    fi 
+
+    log_messages "SUCCESS" "Processed $count volumes" 
+    print_color "$GREEN" "Processed $count volumes"
+
+}
+
 clean_containers() {
     print_color "$BLUE" "Cleaning Containers with prefix: '$DEFAULT_TAG_PREFIX'" 
 
@@ -241,6 +311,10 @@ main() {
                 command="containers"
                 shift 
                 ;;
+            (volumes)
+                command="volumes"
+                shift
+                ;; 
             (*)
                 echo "Unknown Command"
                 exit 1
@@ -266,6 +340,9 @@ main() {
             ;;
         (containers)
             clean_containers
+            ;;
+        (volumes)
+            clean_volumes
             ;;
         (*)
             echo "Unknown Command: $command" 
