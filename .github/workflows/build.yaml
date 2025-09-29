@@ -15,16 +15,31 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Determine Version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF_NAME#v}
+          else
+            VERSION="0.0.0-dev+$(git rev-parse --short HEAD)"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "pkg_name=kraken-clean_$VERSION" >> $GITHUB_OUTPUT
+
       - name: Set up Packaging Structure
         run: | 
-          mkdir -p kraken-clean_${GITHUB_REF_NAME}/DEBIAN 
-          mkdir -p kraken-clean_${GITHUB_REF_NAME}/usr/local/bin 
-          cp kraken-clean.sh kraken-clean_${GITHUB_REF_NAME}/usr/local/bin/
-          chmod +x kraken-clean_${GITHUB_REF_NAME}/usr/local/bin/kraken-clean.sh
-          cat <<EOF > kraken-clean_${GITHUB_REF_NAME}/DEBIAN/control
+          PKG_NAME="${{ steps.version.outputs.pkg_name }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          mkdir -p ${PKG_NAME}/DEBIAN 
+          mkdir -p ${PKG_NAME}/usr/local/bin 
+          cp kraken-clean.sh ${PKG_NAME}/usr/local/bin/
+          chmod +x ${PKG_NAME}/usr/local/bin/kraken-clean.sh
+          
+          cat <<EOF > ${PKG_NAME}/DEBIAN/control
           Package: kraken-clean
-          Version: ${GITHUB_REF_NAME#v}
-          Section: utils 
+          Version: ${VERSION}
+          Section: utils
           Priority: optional
           Architecture: all
           Maintainer: M. Sanjay Uddith Raju <uddithmachiraju@gmail.com>
@@ -32,13 +47,13 @@ jobs:
           EOF
 
       - name: Build DEB Package
-        run: dpkg-deb --build kraken-clean_${GITHUB_REF_NAME}
+        run: dpkg-deb --build ${{ steps.version.outputs.pkg_name }}
 
       - name: Upload DEB Package
         uses: actions/upload-artifact@v4
         with:
           name: kraken-clean-deb
-          path: kraken-clean_${GITHUB_REF_NAME}.deb
+          path: ${{ steps.version.outputs.pkg_name }}.deb
 
   release:
     needs: build
