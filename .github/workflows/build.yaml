@@ -58,6 +58,9 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
 
     steps:
       - name: Download DEB Package
@@ -69,8 +72,5 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: '*.deb'
-          tag_name: ${{ github.ref_name }}  # Use the branch/tag name
-          name: Release ${{ github.ref_name }}
-          draft: ${{ github.ref_type != 'tag' }}  # Make it a draft if not a tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
