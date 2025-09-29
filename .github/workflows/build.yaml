@@ -21,7 +21,7 @@ jobs:
           mkdir -p kraken-clean_${GITHUB_REF_NAME}/usr/local/bin 
           cp kraken-clean.sh kraken-clean_${GITHUB_REF_NAME}/usr/local/bin/
           chmod +x kraken-clean_${GITHUB_REF_NAME}/usr/local/bin/kraken-clean.sh
-          cat <<EOF>> kraken-clean_${GITHUB_REF_NAME}/DEBIAN/control
+          cat <<EOF > kraken-clean_${GITHUB_REF_NAME}/DEBIAN/control
           Package: kraken-clean
           Version: ${GITHUB_REF_NAME#v}
           Section: utils 
@@ -37,22 +37,23 @@ jobs:
       - name: Upload DEB Package
         uses: actions/upload-artifact@v4
         with:
-          name: kraken-clean 
+          name: kraken-clean-deb
           path: kraken-clean_${GITHUB_REF_NAME}.deb
 
   release:
     needs: build
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
 
     steps:
       - name: Download DEB Package
         uses: actions/download-artifact@v4
         with:
-          name: mypackage
+          name: kraken-clean-deb
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: kraken-clean_${GITHUB_REF_NAME}*.deb
+          files: '*.deb'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
