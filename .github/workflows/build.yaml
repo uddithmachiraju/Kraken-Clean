@@ -1,0 +1,58 @@
+name: build and release DEB package
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Packaging Structure
+        run: | 
+          mkdir -p kraken-clean_${GITHUB_REF_NAME}/DEBIAN 
+          mkdir -p kraken-clean_${GITHUB_REF_NAME}/usr/local/bin 
+          cp kraken-clean.sh kraken-clean_${GITHUB_REF_NAME}/usr/local/bin/
+          chmod +x kraken-clean_${GITHUB_REF_NAME}/usr/local/bin/kraken-clean.sh
+          cat <<EOF>> kraken-clean_${GITHUB_REF_NAME}/DEBIAN/control
+          Package: kraken-clean
+          Version: ${GITHUB_REF_NAME#v}
+          Section: utils 
+          Priority: optional
+          Architecture: all
+          Maintainer: M. Sanjay Uddith Raju <uddithmachiraju@gmail.com>
+          Description: A simple bash script to clean up unused Docker resources.
+          EOF
+
+      - name: Build DEB Package
+        run: dpkg-deb --build kraken-clean_${GITHUB_REF_NAME}
+
+      - name: Upload DEB Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: kraken-clean 
+          path: kraken-clean_${GITHUB_REF_NAME}.deb
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download DEB Package
+        uses: actions/download-artifact@v4
+        with:
+          name: mypackage
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: kraken-clean_${GITHUB_REF_NAME}*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
